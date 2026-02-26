@@ -1,28 +1,30 @@
 package kafka
 
 import (
+	"context"
 	"encoding/json"
 	"log"
+
+	"github.com/IBM/sarama"
+
 	"wildberries-tech/internal/cache"
 	"wildberries-tech/internal/models"
 	"wildberries-tech/internal/repository"
-
-	"github.com/IBM/sarama"
 )
 
 type Consumer struct {
-	repo  *repository.Repository
-	cache *cache.Cache
+	repo  repository.OrderRepository
+	cache cache.OrderCache
 }
 
-func NewConsumer(repo *repository.Repository, cache *cache.Cache) *Consumer {
+func NewConsumer(repo repository.OrderRepository, cache cache.OrderCache) *Consumer {
 	return &Consumer{
 		repo:  repo,
 		cache: cache,
 	}
 }
 
-func (c *Consumer) Start() {
+func (c *Consumer) Start(ctx context.Context) {
 	config := sarama.NewConfig()
 	config.Consumer.Return.Errors = true
 
@@ -30,11 +32,21 @@ func (c *Consumer) Start() {
 	if err != nil {
 		log.Fatal("Error creating consumer:", err)
 	}
+	defer func() {
+		if err := consumer.Close(); err != nil {
+			log.Println("Error closing consumer:", err)
+		}
+	}()
 
 	partitionConsumer, err := consumer.ConsumePartition("orders", 0, sarama.OffsetNewest)
 	if err != nil {
 		log.Fatal("Error creating partition consumer:", err)
 	}
+	defer func() {
+		if err := partitionConsumer.Close(); err != nil {
+			log.Println("Error closing partition consumer:", err)
+		}
+	}()
 
 	log.Println("Kafka consumer started...")
 
@@ -44,6 +56,9 @@ func (c *Consumer) Start() {
 			c.processMessage(msg.Value)
 		case err := <-partitionConsumer.Errors():
 			log.Println("Consumer error:", err)
+		case <-ctx.Done():
+			log.Println("Stopping consumer...")
+			return
 		}
 	}
 }
@@ -57,6 +72,11 @@ func (c *Consumer) processMessage(data []byte) {
 		return
 	}
 
+	if err := order.Validate(); err != nil {
+		log.Printf("Validation failed for order %s: %v", order.OrderUID, err)
+		return
+	}
+
 	err = c.repo.SaveOrder(order)
 	if err != nil {
 		log.Println("Error saving to DB:", err)
@@ -64,6 +84,6 @@ func (c *Consumer) processMessage(data []byte) {
 	}
 
 	c.cache.Set(order.OrderUID, order)
-	
+
 	log.Printf("Order %s processed successfully", order.OrderUID)
 }
