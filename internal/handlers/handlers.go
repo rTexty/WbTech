@@ -10,11 +10,11 @@ import (
 )
 
 type Handler struct {
-	repo  *repository.Repository
-	cache *cache.Cache
+	repo  repository.OrderRepository
+	cache cache.OrderCache
 }
 
-func New(repo *repository.Repository, cache *cache.Cache) *Handler {
+func New(repo repository.OrderRepository, cache cache.OrderCache) *Handler {
 	return &Handler{
 		repo:  repo,
 		cache: cache,
@@ -28,7 +28,9 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	order, exists := h.cache.Get(orderUID)
 	if exists {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(order)
+		if err := json.NewEncoder(w).Encode(order); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 		return
 	}
 
@@ -41,5 +43,7 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	h.cache.Set(orderUID, *orderPtr)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(*orderPtr)
+	if err := json.NewEncoder(w).Encode(*orderPtr); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }

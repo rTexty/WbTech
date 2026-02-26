@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -21,27 +26,59 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 		panic(err)
 	}
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			log.Println("Error closing repository:", err)
+		}
+	}()
 
-	cache := cache.New()
+	c := cache.New(cfg.Cache.TTL, cfg.Cache.CleanupInterval)
 
 	orders, err := repo.GetAllOrders()
 	if err != nil {
 		log.Printf("Warning: failed to load orders from DB: %v", err)
 	} else {
-		cache.LoadFromDB(orders)
+		c.LoadFromDB(orders)
 		log.Printf("Loaded %d orders to cache", len(orders))
 	}
 
-	handler := handlers.New(repo, cache)
+	handler := handlers.New(repo, c)
 
-	consumer := kafka.NewConsumer(repo, cache)
-	go consumer.Start()
+	consumer := kafka.NewConsumer(repo, c)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go consumer.Start(ctx)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/order/{order_uid}", handler.GetOrder).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/")))
+	log.Println("Static file server configured: ./web/ directory")
 
-	log.Println("Server starting on :8081")
-	log.Fatal(http.ListenAndServe(":8081", r))
+	srv := &http.Server{
+		Addr:    cfg.Server.Host + ":" + cfg.Server.Port,
+		Handler: r,
+	}
+
+	go func() {
+		log.Printf("Server starting on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("ListenAndServe(): %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exiting")
 }
