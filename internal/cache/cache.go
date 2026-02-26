@@ -1,38 +1,44 @@
 package cache
 
 import (
-	"sync"
+	"time"
 	"wildberries-tech/internal/models"
+
+	gocache "github.com/patrickmn/go-cache"
 )
 
-type Cache struct {
-	data map[string]models.Order
-	mu   sync.RWMutex
+// OrderCache defines the interface for caching orders
+type OrderCache interface {
+	Set(orderUID string, order models.Order)
+	Get(orderUID string) (models.Order, bool)
+	LoadFromDB(orders []models.Order)
 }
 
-func New() *Cache {
+type Cache struct {
+	store *gocache.Cache
+}
+
+func New(defaultExpiration, cleanupInterval time.Duration) *Cache {
 	return &Cache{
-		data: make(map[string]models.Order),
+		store: gocache.New(defaultExpiration, cleanupInterval),
 	}
 }
 
 func (c *Cache) Set(orderUID string, order models.Order) {
-	c.mu.Lock()
-	c.data[orderUID] = order
-	c.mu.Unlock()
+	c.store.Set(orderUID, order, gocache.DefaultExpiration)
 }
 
 func (c *Cache) Get(orderUID string) (models.Order, bool) {
-	c.mu.RLock()
-	order, exists := c.data[orderUID]
-	c.mu.RUnlock()
-	return order, exists
+	if val, found := c.store.Get(orderUID); found {
+		if order, ok := val.(models.Order); ok {
+			return order, true
+		}
+	}
+	return models.Order{}, false
 }
 
 func (c *Cache) LoadFromDB(orders []models.Order) {
-	c.mu.Lock()
 	for _, order := range orders {
-		c.data[order.OrderUID] = order
+		c.Set(order.OrderUID, order)
 	}
-	c.mu.Unlock()
 }
