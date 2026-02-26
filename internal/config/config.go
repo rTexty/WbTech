@@ -2,13 +2,18 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	Database DatabaseConfig
 	Kafka    KafkaConfig
 	Server   ServerConfig
+	Cache    CacheConfig
 }
 
 type DatabaseConfig struct {
@@ -31,13 +36,22 @@ type ServerConfig struct {
 	Port string
 }
 
+type CacheConfig struct {
+	TTL             time.Duration
+	CleanupInterval time.Duration
+}
+
 func LoadConfig() *Config {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
 	return &Config{
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "rtexty"),
-			Password: getEnv("DB_PASSWORD", "rtexty"),
+			User:     getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASSWORD", "postgres"),
 			DBName:   getEnv("DB_NAME", "wbtech"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
@@ -50,6 +64,10 @@ func LoadConfig() *Config {
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 			Port: getEnv("SERVER_PORT", "8081"),
 		},
+		Cache: CacheConfig{
+			TTL:             getDurationEnv("CACHE_TTL", 5*time.Minute),
+			CleanupInterval: getDurationEnv("CACHE_CLEANUP_INTERVAL", 10*time.Minute),
+		},
 	}
 }
 
@@ -61,6 +79,16 @@ func (c *DatabaseConfig) DSN() string {
 func getEnv(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
+	}
+	return defaultValue
+}
+
+func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
+	if value, exists := os.LookupEnv(key); exists {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+		log.Printf("Invalid duration for %s, using default: %v", key, defaultValue)
 	}
 	return defaultValue
 }

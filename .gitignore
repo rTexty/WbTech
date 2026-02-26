@@ -1,7 +1,7 @@
 # Binaries
 main
-server
-producer
+/server
+/producer
 
 # Config
 .env
