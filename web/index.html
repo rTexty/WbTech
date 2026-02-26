@@ -1,45 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Service</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 50px; }
-        input { padding: 10px; margin: 10px; width: 300px; }
-        button { padding: 10px 20px; background: #007cba; color: white; border: none; cursor: pointer; }
-        #result { margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 5px; }
-        pre { white-space: pre-wrap; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .search-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        input {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            min-height: 50px;
+        }
+        
+        #result.loading {
+            color: #667eea;
+            font-style: italic;
+        }
+        
+        #result.error {
+            border-left-color: #dc3545;
+            color: #dc3545;
+        }
+        
+        #result.success {
+            border-left-color: #28a745;
+        }
+        
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #333;
+        }
+        
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h1>Order Service</h1>
-    <div>
-        <input type="text" id="orderUID" placeholder="Enter Order UID">
-        <button onclick="getOrder()">Get Order</button>
+    <div class="container">
+        <h1>📦 Order Service</h1>
+        <p class="subtitle">Search for orders by their unique identifier</p>
+        
+        <div class="search-section">
+            <input type="text" id="orderUID" placeholder="Enter Order UID (e.g., b06b2e9e-7c0b-4ec0-adfa-0069322dba80)">
+            <button onclick="getOrder()">Search</button>
+        </div>
+        
+        <div id="result" class="hidden"></div>
     </div>
-    <div id="result"></div>
 
     <script>
+        const orderUIDInput = document.getElementById('orderUID');
+        const resultDiv = document.getElementById('result');
+        
+        // Allow Enter key to trigger search
+        orderUIDInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                getOrder();
+            }
+        });
+        
         function getOrder() {
-            const orderUID = document.getElementById('orderUID').value;
+            const orderUID = orderUIDInput.value.trim();
+            
             if (!orderUID) {
-                document.getElementById('result').innerHTML = 'Please enter Order UID';
+                showError('Please enter an Order UID');
                 return;
             }
             
-            fetch('/order/' + orderUID)
+            showLoading('Searching for order...');
+            
+            fetch('/order/' + encodeURIComponent(orderUID))
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Order not found');
+                        if (response.status === 404) {
+                            throw new Error('Order not found');
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    document.getElementById('result').innerHTML = 
-                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                    showSuccess();
+                    resultDiv.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
                 })
                 .catch(error => {
-                    document.getElementById('result').innerHTML = 'Error: ' + error.message;
+                    showError('Error: ' + error.message);
                 });
+        }
+        
+        function showLoading(message) {
+            resultDiv.className = 'loading';
+            resultDiv.textContent = message;
+            resultDiv.classList.remove('hidden');
+        }
+        
+        function showError(message) {
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = '❌ ' + message;
+            resultDiv.classList.remove('hidden');
+        }
+        
+        function showSuccess() {
+            resultDiv.className = 'success';
+            resultDiv.classList.remove('hidden');
         }
     </script>
 </body>
