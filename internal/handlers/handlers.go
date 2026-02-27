@@ -1,3 +1,4 @@
+// Package handlers implements HTTP request handlers for the order service.
 package handlers
 
 import (
@@ -9,11 +10,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// Handler manages HTTP requests and dependencies.
 type Handler struct {
 	repo  repository.OrderRepository
 	cache cache.OrderCache
 }
 
+// New creates a new Handler instance.
 func New(repo repository.OrderRepository, cache cache.OrderCache) *Handler {
 	return &Handler{
 		repo:  repo,
@@ -21,6 +24,7 @@ func New(repo repository.OrderRepository, cache cache.OrderCache) *Handler {
 	}
 }
 
+// GetOrder handles requests to retrieve an order by UID.
 func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	orderUID := vars["order_uid"]
@@ -29,8 +33,8 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	if exists {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(order); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 		return
 	}
 

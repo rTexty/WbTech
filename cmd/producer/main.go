@@ -1,3 +1,4 @@
+// Package main implements a simple Kafka producer for testing.
 package main
 
 import (
@@ -5,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"wildberries-tech/internal/config"
 	"wildberries-tech/internal/models"
 
 	"github.com/IBM/sarama"
@@ -12,12 +14,17 @@ import (
 )
 
 func main() {
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-
-	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, config)
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Error creating producer:", err)
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	saramaConfig := sarama.NewConfig()
+	saramaConfig.Producer.Return.Successes = true
+
+	producer, err := sarama.NewSyncProducer(cfg.Kafka.Brokers, saramaConfig)
+	if err != nil {
+		log.Fatalf("Error creating producer: %v", err)
 	}
 	defer func() {
 		if err := producer.Close(); err != nil {
@@ -36,7 +43,7 @@ func main() {
 		}
 
 		message := &sarama.ProducerMessage{
-			Topic: "orders",
+			Topic: cfg.Kafka.Topic,
 			Value: sarama.StringEncoder(data),
 		}
 

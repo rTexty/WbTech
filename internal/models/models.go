@@ -1,3 +1,4 @@
+// Package models defines the data structures used in the application.
 package models
 
 import (
@@ -12,6 +13,7 @@ func init() {
 	validate = validator.New()
 }
 
+// Order represents the main order structure.
 type Order struct {
 	OrderUID          string    `json:"order_uid" gorm:"primaryKey;size:255;not null" validate:"required"`
 	TrackNumber       string    `json:"track_number" gorm:"size:255;not null" validate:"required"`
@@ -29,10 +31,12 @@ type Order struct {
 	OofShard          string    `json:"oof_shard" gorm:"size:10" validate:"required"`
 }
 
+// Validate checks the structural integrity of the Order.
 func (o *Order) Validate() error {
 	return validate.Struct(o)
 }
 
+// Delivery contains delivery information.
 type Delivery struct {
 	Name    string `json:"name" gorm:"size:255;not null" validate:"required"`
 	Phone   string `json:"phone" gorm:"size:20;not null" validate:"required"`
@@ -43,6 +47,7 @@ type Delivery struct {
 	Email   string `json:"email" gorm:"size:255" validate:"required,email"`
 }
 
+// Payment contains payment details.
 type Payment struct {
 	Transaction  string `json:"transaction" gorm:"size:255;not null" validate:"required"`
 	RequestID    string `json:"request_id" gorm:"size:255"`
@@ -56,6 +61,7 @@ type Payment struct {
 	CustomFee    int    `json:"custom_fee" gorm:"default:0" validate:"gte=0"`
 }
 
+// Item represents an item in the order.
 type Item struct {
 	ID          uint   `json:"-" gorm:"primaryKey;autoIncrement"`
 	OrderUID    string `json:"-" gorm:"size:255;not null;index"`

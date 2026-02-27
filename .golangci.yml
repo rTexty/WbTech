@@ -1,11 +1,8 @@
-version: 2
+version: "2"
+
 run:
   timeout: 5m
-linters-settings:
-  lll:
-    line-length: 120
-  gocyclo:
-    min-complexity: 15
+
 linters:
   enable:
     - revive
@@ -17,3 +14,10 @@ linters:
     - unparam
     - prealloc
     - testifylint
+
+  settings:
+    lll:
+      line-length: 120
+    gocyclo:
+      min-complexity: 15
+
