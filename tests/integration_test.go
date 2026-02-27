@@ -48,7 +48,7 @@ func TestIntegration_GetOrder(t *testing.T) {
 	mockRepo := new(MockRepository)
 	// Use real cache
 	realCache := cache.New(5*time.Minute, 10*time.Minute)
-	
+
 	h := handlers.New(mockRepo, realCache)
 	router := mux.NewRouter()
 	router.HandleFunc("/order/{order_uid}", h.GetOrder)
@@ -60,7 +60,7 @@ func TestIntegration_GetOrder(t *testing.T) {
 		TrackNumber: "TRACK_INT_1",
 		// Minimal valid fields
 	}
-	
+
 	mockRepo.On("GetOrder", orderUID).Return(&order, nil)
 
 	req, _ := http.NewRequest("GET", "/order/"+orderUID, nil)
@@ -88,6 +88,6 @@ func TestIntegration_GetOrder(t *testing.T) {
 	req2, _ := http.NewRequest("GET", "/order/"+orderUID, nil)
 	rr2 := httptest.NewRecorder()
 	router.ServeHTTP(rr2, req2)
-	
+
 	assert.Equal(t, http.StatusOK, rr2.Code)
 }
