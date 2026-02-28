@@ -8,28 +8,18 @@ import (
 	"log"
 
 	"github.com/IBM/sarama"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"wildberries-tech/internal/cache"
+	"wildberries-tech/internal/metrics"
 	"wildberries-tech/internal/models"
 	"wildberries-tech/internal/repository"
-)
-
-var (
-	messagesTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "kafka_messages_total",
-			Help: "The total number of processed messages",
-		},
-		[]string{"status"},
-	)
 )
 
 // Consumer consumes orders from Kafka and saves them to the repository.
 type Consumer struct {
 	repo        repository.OrderRepository
 	cache       cache.OrderCache
+	metrics     metrics.Metrics
 	brokers     []string
 	topic       string
 	dlqTopic    string
@@ -37,11 +27,12 @@ type Consumer struct {
 }
 
 // NewConsumer creates a new Consumer instance.
-func NewConsumer(repo repository.OrderRepository, cache cache.OrderCache,
+func NewConsumer(repo repository.OrderRepository, cache cache.OrderCache, m metrics.Metrics,
 	brokers []string, topic, dlqTopic string) *Consumer {
 	return &Consumer{
 		repo:     repo,
 		cache:    cache,
+		metrics:  m,
 		brokers:  brokers,
 		topic:    topic,
 		dlqTopic: dlqTopic,
@@ -126,13 +117,13 @@ func (c *Consumer) processMessage(data []byte) {
 	}
 
 	c.cache.Set(order.OrderUID, order)
-	messagesTotal.WithLabelValues("success").Inc()
+	c.metrics.IncMessagesTotal("success")
 
 	log.Printf("Order %s processed successfully", order.OrderUID)
 }
 
 func (c *Consumer) handleError(data []byte, err error) {
-	messagesTotal.WithLabelValues("error").Inc()
+	c.metrics.IncMessagesTotal("error")
 
 	// Send to DLQ
 	msg := &sarama.ProducerMessage{

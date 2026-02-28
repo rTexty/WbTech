@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -12,12 +13,16 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 
 	"wildberries-tech/internal/cache"
 	"wildberries-tech/internal/config"
 	"wildberries-tech/internal/handlers"
+	"wildberries-tech/internal/health"
 	"wildberries-tech/internal/kafka"
+	"wildberries-tech/internal/metrics"
 	"wildberries-tech/internal/repository"
+	"wildberries-tech/internal/tracing"
 )
 
 func main() {
@@ -26,9 +31,34 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Initialize tracing
+	tracer, err := tracing.New(ctx, tracing.Config{
+		ServiceName:    "order-service",
+		ServiceVersion: "1.0.0",
+		Environment:    "development",
+		JaegerEndpoint: cfg.Tracing.Endpoint,
+		Enabled:        cfg.Tracing.Enabled,
+	})
+	if err != nil {
+		log.Printf("Warning: failed to initialize tracing: %v", err)
+	}
+	defer func() {
+		if tracer != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := tracer.Shutdown(shutdownCtx); err != nil {
+				log.Printf("Error shutting down tracer: %v", err)
+			}
+		}
+	}()
+
 	repo, err := repository.New(cfg.Database)
 	if err != nil {
-		log.Fatalf("Failed to initialize repository: %v", err)
+		log.Printf("Failed to initialize repository: %v", err)
+		return
 	}
 	defer func() {
 		if err := repo.Close(); err != nil {
@@ -48,20 +78,40 @@ func main() {
 
 	handler := handlers.New(repo, c)
 
-	consumer := kafka.NewConsumer(repo, c, cfg.Kafka.Brokers, cfg.Kafka.Topic, cfg.Kafka.DLQTopic)
+	m := metrics.NewPrometheus()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Initialize health checker
+	sqlDB, err := repo.DB()
+	if err != nil {
+		log.Printf("Warning: failed to get sql.DB for health checks: %v", err)
+	}
+	healthChecker := health.NewChecker(sqlDB, cfg.Kafka.Brokers, m, 30*time.Second)
+	go healthChecker.Start(ctx)
+
+	consumer := kafka.NewConsumer(repo, c, m, cfg.Kafka.Brokers, cfg.Kafka.Topic, cfg.Kafka.DLQTopic)
 
 	go func() {
 		if err := consumer.Start(ctx); err != nil {
 			log.Printf("Consumer stopped with error: %v", err)
-			cancel() // Stop the server if consumer fails critically
+			cancel()
 		}
 	}()
 
 	r := mux.NewRouter()
+	r.Use(otelmux.Middleware("order-service"))
 	r.Handle("/metrics", promhttp.Handler())
+	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		status := healthChecker.Status()
+		w.Header().Set("Content-Type", "application/json")
+		if healthChecker.IsHealthy() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		if err := json.NewEncoder(w).Encode(status); err != nil {
+			log.Printf("Error encoding health status: %v", err)
+		}
+	}).Methods("GET")
 	r.HandleFunc("/order/{order_uid}", handler.GetOrder).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/")))
 
@@ -81,7 +131,7 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
-	cancel() // Cancel context for consumer
+	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
