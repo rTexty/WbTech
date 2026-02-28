@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,10 @@ func (m *MockRepository) GetAllOrders() ([]models.Order, error) {
 
 func (m *MockRepository) Close() error {
 	return nil
+}
+
+func (m *MockRepository) DB() (*sql.DB, error) {
+	return nil, nil
 }
 
 func TestIntegration_GetOrder(t *testing.T) {

@@ -2,6 +2,7 @@
 package repository
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 	"wildberries-tech/internal/config"
@@ -17,6 +18,7 @@ type OrderRepository interface {
 	GetOrder(orderUID string) (*models.Order, error)
 	GetAllOrders() ([]models.Order, error)
 	Close() error
+	DB() (*sql.DB, error)
 }
 
 // Repository implements OrderRepository using GORM.
@@ -95,4 +97,9 @@ func (r *Repository) Close() error {
 		return fmt.Errorf("failed to get sql db: %w", err)
 	}
 	return sqlDB.Close()
+}
+
+// DB returns the underlying sql.DB for health checks.
+func (r *Repository) DB() (*sql.DB, error) {
+	return r.db.DB()
 }
