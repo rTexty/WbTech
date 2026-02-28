@@ -16,6 +16,7 @@ type Config struct {
 	Kafka    KafkaConfig
 	Server   ServerConfig
 	Cache    CacheConfig
+	Tracing  TracingConfig
 }
 
 // KafkaConfig holds configuration for Kafka.
@@ -36,6 +37,12 @@ type ServerConfig struct {
 type CacheConfig struct {
 	TTL             time.Duration
 	CleanupInterval time.Duration
+}
+
+// TracingConfig holds configuration for distributed tracing.
+type TracingConfig struct {
+	Enabled  bool
+	Endpoint string
 }
 
 // DatabaseConfig holds configuration for the database connection.
@@ -85,6 +92,10 @@ func LoadConfig() (*Config, error) {
 			TTL:             getDurationEnv("CACHE_TTL", 5*time.Minute),
 			CleanupInterval: getDurationEnv("CACHE_CLEANUP_INTERVAL", 10*time.Minute),
 		},
+		Tracing: TracingConfig{
+			Enabled:  getBoolEnv("TRACING_ENABLED", false),
+			Endpoint: getEnv("TRACING_ENDPOINT", "localhost:4318"),
+		},
 	}, nil
 }
 
@@ -118,6 +129,13 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 			return duration
 		}
 		log.Printf("Invalid duration for %s, using default: %v", key, defaultValue)
+	}
+	return defaultValue
+}
+
+func getBoolEnv(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		return value == "true" || value == "1" || value == "yes"
 	}
 	return defaultValue
 }

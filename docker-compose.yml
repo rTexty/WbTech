@@ -35,3 +35,11 @@ services:
         - ./postgres-data:/data/postgres
       ports:
         - "5432:5432"
+
+    jaeger:
+      image: jaegertracing/all-in-one:1.56
+      environment:
+        - COLLECTOR_OTLP_ENABLED=true
+      ports:
+        - "16686:16686"
+        - "4318:4318"
